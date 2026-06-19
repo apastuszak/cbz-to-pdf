@@ -94,6 +94,60 @@ python cbz_to_pdf.py /comics /output --recursive --skip-existing
 python cbz_to_pdf.py /comics /output --force
 ```
 
+## Batch processing
+
+When `input` is a directory, every `.cbz` and `.cbr` inside it is converted in one run. Each archive becomes a PDF of the same name (`Issue 01.cbz` → `Issue 01.pdf`). Files are processed in natural sort order, and the run prints `[n/total]` progress for each.
+
+### Where the PDFs are written
+
+- **No `output` given** — each PDF is written next to its source archive:
+  ```bash
+  python cbz_to_pdf.py /comics
+  ```
+  ```
+  /comics/Issue 01.cbz  ->  /comics/Issue 01.pdf
+  /comics/Issue 02.cbz  ->  /comics/Issue 02.pdf
+  ```
+- **`output` directory given** — PDFs are written there instead (the directory is created if needed):
+  ```bash
+  python cbz_to_pdf.py /comics /output
+  ```
+  ```
+  /comics/Issue 01.cbz  ->  /output/Issue 01.pdf
+  /comics/Issue 02.cbz  ->  /output/Issue 02.pdf
+  ```
+
+### Recursing into subfolders
+
+By default only the top level of the directory is scanned. Add `-r`/`--recursive` to include nested folders. The input folder structure is mirrored in the output, so issues with the same filename in different folders never overwrite each other:
+
+```bash
+python cbz_to_pdf.py /comics /output --recursive
+```
+```
+/comics/Spider-Man/01.cbz  ->  /output/Spider-Man/01.pdf
+/comics/Batman/01.cbz      ->  /output/Batman/01.pdf
+```
+
+### Overwrite behavior
+
+By default, batch mode will **not** overwrite a PDF that already exists — it reports an error for that file and moves on. Control this with:
+
+- `--skip-existing` — silently skip archives whose PDF already exists. Ideal for **resuming** a large run that was interrupted.
+- `--force` — re-convert and overwrite existing PDFs.
+
+### Errors and exit codes
+
+A failure on one archive (corrupt file, no images, etc.) is reported to stderr and the batch continues with the rest. At the end a summary is printed (e.g. `Done: 12 converted, 2 skipped, 1 failed`), and the process exits non-zero if any archive failed — handy for scripting:
+
+```bash
+if python cbz_to_pdf.py /comics /output --skip-existing; then
+    echo "All conversions succeeded"
+else
+    echo "Some conversions failed — check the log above"
+fi
+```
+
 ## ComicInfo.xml metadata mapping
 
 If the archive contains a `ComicInfo.xml` file (standard in many comic management tools), its fields are mapped to PDF metadata:
