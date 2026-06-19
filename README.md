@@ -9,6 +9,8 @@ Convert CBZ and CBR comic archive files to PDF. Metadata from `ComicInfo.xml` is
 - Converts unsupported formats (WebP, etc.) to PNG as a fallback
 - Reads `ComicInfo.xml` and populates standard PDF metadata fields
 - Natural sort order for image pages (page 10 comes after page 9, not page 1)
+- Batch-converts a whole directory of archives, with optional recursion into subfolders
+- Low, near-constant memory use — pages are streamed via a temp directory rather than held in RAM all at once
 - Guards against malicious archives (zip bombs, oversized members)
 
 ## Requirements
@@ -47,27 +49,48 @@ pip install -r requirements.txt
 ## Usage
 
 ```
-python cbz_to_pdf.py <input> <output>
+python cbz_to_pdf.py <input> [output] [options]
 ```
+
+`input` may be either a single archive file **or** a directory of archives (batch mode).
 
 ### Arguments
 
 | Argument | Description |
 |---|---|
-| `input` | Path to a `.cbz` or `.cbr` file |
-| `output` | Path for the output `.pdf` file |
+| `input` | Path to a `.cbz`/`.cbr` file, or a directory containing archives |
+| `output` | **Single file:** path for the output `.pdf` (required). **Directory:** output directory for the PDFs (optional — defaults to writing each PDF next to its source archive) |
+
+### Options
+
+| Option | Description |
+|---|---|
+| `-r`, `--recursive` | Recurse into subdirectories when the input is a directory. The output mirrors the input folder structure, so identically-named issues in different folders don't collide |
+| `--skip-existing` | In batch mode, skip any archive whose output `.pdf` already exists (useful for resuming an interrupted run) |
+| `--force` | In batch mode, overwrite existing output `.pdf` files. By default, batch mode refuses to overwrite and reports it as an error |
+
+In batch mode the exit code is non-zero if any file failed; individual failures are reported and the remaining archives are still processed.
 
 ### Examples
 
 ```bash
-# Convert a CBZ file
+# Convert a single CBZ file
 python cbz_to_pdf.py "The Sandman 001.cbz" "The Sandman 001.pdf"
 
-# Convert a CBR file
+# Convert a single CBR file
 python cbz_to_pdf.py "Watchmen 01.cbr" "Watchmen 01.pdf"
 
-# Use absolute paths
-python cbz_to_pdf.py /comics/input.cbz /output/result.pdf
+# Batch-convert a directory, writing PDFs next to each archive
+python cbz_to_pdf.py /comics
+
+# Batch-convert into a separate output directory
+python cbz_to_pdf.py /comics /output
+
+# Recurse into subfolders, resuming a previous run
+python cbz_to_pdf.py /comics /output --recursive --skip-existing
+
+# Re-convert everything, overwriting existing PDFs
+python cbz_to_pdf.py /comics /output --force
 ```
 
 ## ComicInfo.xml metadata mapping
@@ -156,4 +179,4 @@ An image in the archive has an extremely large pixel count (> 178 megapixels). T
 
 ## License
 
-MIT
+BSD 3-Clause — see [LICENSE](LICENSE).
