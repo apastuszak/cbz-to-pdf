@@ -9,7 +9,8 @@ import re
 import sys
 import tempfile
 import zipfile
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
+from defusedxml.common import DefusedXmlException
 from pathlib import Path
 
 try:
@@ -30,6 +31,7 @@ IMG2PDF_NATIVE_FORMATS = {'JPEG', 'PNG', 'TIFF', 'GIF', 'BMP'}
 MAX_MEMBER_SIZE = 200 * 1024 * 1024   # 200 MB per file
 MAX_TOTAL_SIZE  = 4  * 1024 * 1024 * 1024  # 4 GB total uncompressed
 MAX_MEMBERS     = 10_000
+MAX_COMICINFO_SIZE = 16 * 1024 * 1024  # 16 MB cap for ComicInfo.xml
 
 
 class ConversionError(Exception):
@@ -91,7 +93,9 @@ def parse_comic_info(xml_data: bytes) -> dict:
             d = day.zfill(2) if day and re.match(r'^\d{1,2}$', day) else '01'
             metadata['/CreationDate'] = f"D:{year.zfill(4)}{m}{d}000000"
 
-    except ET.ParseError as e:
+    except (ET.ParseError, DefusedXmlException) as e:
+        # DefusedXmlException covers entity-expansion / DTD attacks in a hostile
+        # ComicInfo.xml; metadata is optional, so warn and continue.
         print(f"Warning: Could not parse ComicInfo.xml: {e}", file=sys.stderr)
 
     return metadata
@@ -158,7 +162,9 @@ def convert(input_path: Path, output_path: Path) -> None:
         metadata = {}
         if comic_info_name:
             with archive.open(comic_info_name) as f:
-                metadata = parse_comic_info(f.read())
+                # ComicInfo.xml is tiny; cap the read so a bomb member can't
+                # exhaust memory before defusedxml even sees it.
+                metadata = parse_comic_info(f.read(MAX_COMICINFO_SIZE))
             if metadata:
                 print(f"ComicInfo.xml: {len(metadata)} metadata field(s) found")
 
@@ -179,7 +185,15 @@ def convert(input_path: Path, output_path: Path) -> None:
             image_paths = []
             for idx, name in enumerate(image_names):
                 with archive.open(name) as f:
-                    data = f.read()
+                    # Cap the read: the declared file_size checked in
+                    # check_archive_safety can be a lie, but the decompressed
+                    # stream cannot exceed the cap without us noticing here.
+                    data = f.read(MAX_MEMBER_SIZE + 1)
+                    if len(data) > MAX_MEMBER_SIZE:
+                        raise ConversionError(
+                            f"Archive member exceeds {MAX_MEMBER_SIZE // 1_048_576} MB "
+                            f"when decompressed: {name}"
+                        )
                 dest = tmp_dir / f"{idx:06d}"
                 prepare_image_to_file(data, dest)
                 image_paths.append(str(dest))
