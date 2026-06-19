@@ -11,7 +11,7 @@ Convert CBZ and CBR comic archive files to PDF. Metadata from `ComicInfo.xml` is
 - Natural sort order for image pages (page 10 comes after page 9, not page 1)
 - Batch-converts a whole directory of archives, with optional recursion into subfolders
 - Low, near-constant memory use — pages are streamed via a temp directory rather than held in RAM all at once
-- Guards against malicious archives (zip bombs, oversized members)
+- Hardened against malicious archives — zip bombs, oversized members (even with forged size headers), and XML entity-expansion attacks in `ComicInfo.xml`
 
 ## Requirements
 
@@ -26,6 +26,7 @@ pip install -r requirements.txt
 | `img2pdf` | Losslessly embeds images into PDF |
 | `Pillow` | Converts unsupported image formats to PNG |
 | `pypdf` | Writes PDF metadata |
+| `defusedxml` | Safely parses `ComicInfo.xml`, blocking XML entity-expansion attacks |
 | `rarfile` | Reads CBR (RAR) archives — optional, only needed for `.cbr` files |
 
 ### System dependencies
@@ -145,8 +146,9 @@ To protect against malicious or corrupt archives:
 | Maximum members in archive | 10,000 |
 | Maximum uncompressed size per file | 200 MB |
 | Maximum total uncompressed size | 4 GB |
+| Maximum `ComicInfo.xml` size | 16 MB |
 
-These limits can be adjusted by editing the constants at the top of `cbz_to_pdf.py`.
+Per-file size is enforced both against the archive's declared header **and** against the actual decompressed stream, so a forged size header cannot bypass the limit. These values can be adjusted by editing the constants at the top of `cbz_to_pdf.py`.
 
 ## Troubleshooting
 
