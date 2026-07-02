@@ -33,6 +33,10 @@ MAX_TOTAL_SIZE  = 4  * 1024 * 1024 * 1024  # 4 GB total uncompressed
 MAX_MEMBERS     = 10_000
 MAX_COMICINFO_SIZE = 16 * 1024 * 1024  # 16 MB cap for ComicInfo.xml
 
+# Target PDF version stamped in the output header. img2pdf/pypdf emit 1.3–1.4
+# for these image-only PDFs; we bump the declared version up to this.
+PDF_VERSION = "1.6"
+
 
 class ConversionError(Exception):
     """An expected, per-file failure (bad archive, no images, etc.)."""
@@ -205,6 +209,23 @@ def convert(input_path: Path, output_path: Path) -> None:
     print(f"Written: {output_path} ({size_mb:.1f} MB)")
 
 
+def stamp_pdf_version(path: Path, version: str = PDF_VERSION) -> None:
+    """Bump the PDF version in the file header (e.g. `%PDF-1.3` -> `%PDF-1.6`).
+
+    The `%PDF-1.x` token is a fixed 8 bytes, so overwriting it in place leaves
+    every xref byte offset intact. Only raises the version, never downgrades, so
+    a file that already declares a higher version keeps it.
+    """
+    header = f"%PDF-{version}".encode('ascii')
+    with open(path, 'r+b') as f:
+        current = f.read(len(header))
+        if current[:7] != b'%PDF-1.' or not current[7:8].isdigit():
+            return  # unexpected header; leave it alone
+        if current[7:8] < version.split('.')[1].encode('ascii'):
+            f.seek(0)
+            f.write(header)
+
+
 def write_pdf(image_paths: list, metadata: dict, output_path: Path) -> None:
     """Assemble image files into a PDF, streaming to disk, and apply metadata if any."""
     try:
@@ -226,6 +247,7 @@ def write_pdf(image_paths: list, metadata: dict, output_path: Path) -> None:
         else:
             with open(output_path, 'wb') as out:
                 img2pdf.convert(image_paths, outputstream=out)
+        stamp_pdf_version(output_path)
     except BaseException:
         # Don't leave a truncated PDF behind on failure (incl. Ctrl-C)
         output_path.unlink(missing_ok=True)
